@@ -39,7 +39,11 @@ class Disable_Plugin_And_Theme_Updates {
 		//Plugin Actions
 		add_action( 'load-plugins.php', array( $this, 'bulk_actions_plugins' ) );
 		add_filter( 'site_transient_update_plugins', array( $this, 'disable_plugin_notifications' ) );
-		add_filter( 'network_admin_plugin_action_links', array( $this, 'plugin_action_links' ), 11, 2 );
+		if ( is_multisite() ) {
+			add_filter( 'network_admin_plugin_action_links', array( $this, 'plugin_action_links' ), 11, 2 );
+		} else {
+			add_filter( 'plugin_action_links', array( $this, 'plugin_action_links' ), 11, 2 );
+		}
 		
 		//Theme Actions
 		add_action( 'load-themes.php', array( $this, 'bulk_actions_themes' ) );
