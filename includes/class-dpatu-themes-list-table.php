@@ -250,6 +250,7 @@ class DPATU_Themes_List_Table extends DPATU_List_Table {
 	public function single_row( $theme ) {
 		$status = 'all';
 		$stylesheet = $theme->get_stylesheet();
+		remove_action( "after_theme_row_$stylesheet", 'wp_theme_update_row', 10, 2 );
 		$theme_key = urlencode( $stylesheet );
 
 		

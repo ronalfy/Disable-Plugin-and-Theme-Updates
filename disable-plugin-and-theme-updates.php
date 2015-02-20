@@ -10,6 +10,7 @@ Author URI: http://www.ronalfy.com
 Contributors: ronalfy
 Text Domain: disable-plugin-and-theme-updates
 Domain Path: /languages
+Network: true
 Some code from:  https://wordpress.org/plugins/stops-core-theme-and-plugin-updates/, http://www.skyverge.com/blog/add-custom-bulk-action/, https://wordpress.org/plugins/custom-list-table-example/
 */ 
 class Disable_Plugin_And_Theme_Updates {
@@ -44,21 +45,60 @@ class Disable_Plugin_And_Theme_Updates {
 		} else {
 			add_filter( 'plugin_action_links', array( $this, 'plugin_action_links' ), 11, 2 );
 		}
+		add_filter( 'dpatu_plugin_action_links', array( $this, 'plugin_action_links' ), 11, 2 );
+		add_action( 'admin_init', array( $this, 'maybe_save_plugin_options' ) );
 		
 		//Theme Actions
 		add_action( 'load-themes.php', array( $this, 'bulk_actions_themes' ) );
 		add_filter( 'site_transient_update_themes', array( $this, 'disable_theme_notifications' ) );
 		add_filter( 'theme_action_links', array( $this, 'theme_action_links' ), 11, 2 ); //MS only
 		add_filter( 'dpatu_theme_action_links', array( $this, 'theme_action_links' ), 11, 2 ); //Single site only
-		add_action( 'admin_menu', array( $this, 'init_admin_menus' ) );
 		add_action( 'admin_init', array( $this, 'maybe_save_theme_options' ) );
 		
 		//Plugin and Theme actions
+		if ( is_multisite() ) {
+			add_action( 'network_admin_menu', array( $this, 'init_admin_menus' ) );
+		} else {
+			add_action( 'admin_menu', array( $this, 'init_admin_menus' ) );
+		}
 		add_filter( 'http_request_args', array( $this, 'http_request_args_remove_plugins_themes' ), 5, 2 );
 	} //end init
 	
+	public function maybe_save_plugin_options() {
+		if ( !current_user_can( 'update_plugins' ) ) return;
+		if ( !isset( $_GET[ 'page' ] ) || $_GET[ 'page' ] != 'dpatu-plugin-updates' ) return;
+		if ( !isset( $_REQUEST[ 'action' ] ) ) return;
+		
+		$action = $_REQUEST[ 'action' ];
+		$plugin_disabled = false;
+		if ( 'disallow-update-selected' == $action ) {
+			$plugin_disabled = true;
+		}
+		
+		//Build Query Args
+		$paged = isset( $_GET[ 'paged' ] ) ? absint( $_GET[ 'paged' ] ) : false;
+		$query_args = array();
+		$query_args[ 'page' ] = 'dpatu-plugin-updates';
+		if ( false !== $paged ) {
+			$query_args[ 'paged' ] = $paged;	
+		}
+		if ( false == $plugin_disabled ) {
+			$query_args[ 'disabled' ] = 0;
+		} else {
+			$query_args[ 'disabled' ] = 1;
+		}
+		//Save theme options
+		$this->save_plugin_update_options( $action );
+		
+		$url = is_multisite() ? network_admin_url( 'plugins.php' ) : admin_url( 'plugins.php' );
+		
+		//Redirect back to settings screen
+		wp_redirect( esc_url_raw( add_query_arg( $query_args, $url ) ) );
+		exit;
+	}
+	
 	public function maybe_save_theme_options() {
-		if ( !is_multisite() || !current_user_can( 'update_themes' ) ) return;
+		if ( !current_user_can( 'update_themes' ) ) return;
 		if ( !isset( $_GET[ 'page' ] ) || $_GET[ 'page' ] != 'dpatu-theme-updates' ) return;
 		if ( !isset( $_REQUEST[ 'action' ] ) ) return;
 		
@@ -76,21 +116,52 @@ class Disable_Plugin_And_Theme_Updates {
 			$query_args[ 'paged' ] = $paged;	
 		}
 		if ( false == $theme_disabled ) {
-			$query_args[ 'disabled' ] = 1;
-		} else {
 			$query_args[ 'disabled' ] = 0;
+		} else {
+			$query_args[ 'disabled' ] = 1;
 		}
 		//Save theme options
 		$this->save_theme_update_options( $action );
 		
+		$url = is_multisite() ? network_admin_url( 'themes.php' ) : admin_url( 'themes.php' );
+		
 		//Redirect back to settings screen
-		wp_redirect( esc_url_raw( add_query_arg( $query_args, admin_url( 'themes.php' ) ) ) );
+		wp_redirect( esc_url_raw( add_query_arg( $query_args, $url ) ) );
 		exit;
 	}
 	
 	public function init_admin_menus() {
-		if ( is_multisite() ) return;
-		add_theme_page( __( 'Theme Updates', 'disable-plugin-and-theme-updates' ) , __( 'Updates', 'disable-plugin-and-theme-updates' ), 'update_themes', 'dpatu-theme-updates', array( $this, 'output_theme_update_options' ) );	
+		add_theme_page( __( 'Theme Update Options', 'disable-plugin-and-theme-updates' ) , __( 'Update Options', 'disable-plugin-and-theme-updates' ), 'update_themes', 'dpatu-theme-updates', array( $this, 'output_theme_update_options' ) );	
+		add_plugins_page( __( 'Plugin Update Options', 'disable-plugin-and-theme-updates' ) , __( 'Update Options', 'disable-plugin-and-theme-updates' ), 'update_plugins', 'dpatu-plugin-updates', array( $this, 'output_plugin_update_options' ) );
+	}
+	
+	public function output_plugin_update_options() {
+		require( $this->get_plugin_dir( '/includes/class-dpatu-list-table.php' ) );
+		require( $this->get_plugin_dir( '/includes/class-dpatu-plugins-list-table.php' ) );
+		
+		if ( isset( $_GET[ 'disabled' ] ) ) {
+			$message = __( 'The selected plugins have had their upgrades enabled.', 'disable-plugin-and-theme-updates' );
+			if ( $_GET[ 'disabled' ] == 1 ) {
+				$message = __( 'The selected plugins have had their upgrades disabled.', 'disable-plugin-and-theme-updates' );
+			}	
+			?>
+			<div class="updated"><p><strong><?php echo esc_html( $message ); ?></strong></p></div>
+			<?php
+		}
+		
+		$plugin_table = new DPATU_Plugins_List_Table( $args = array( 'screen' => 'dpatu-plugin-updates' ) );
+		$plugin_table->prepare_items();
+		?>
+		<div class="wrap">
+        <form action="<?php echo esc_url( add_query_arg( array() ) ); ?>" method="post">
+	    <?php
+		wp_nonce_field( 'dpatu_plugin_update', '_dpatu' );
+		?>
+        <h2><?php esc_html_e( 'Plugin Updates', 'disable-plugin-and-theme-updates' ); ?></h2>
+            <?php $plugin_table->display() ?>
+        </div><!-- .wrap -->
+        </form>
+    <?php
 	}
 	
 	public function output_theme_update_options() {
@@ -144,9 +215,11 @@ class Disable_Plugin_And_Theme_Updates {
 		$theme_options = get_site_option( 'dpatu_themes', array(), false );
 		if ( false !== $key = array_search( $stylesheet, $theme_options ) ) {
 			$enable_url = add_query_arg( array( 'action' => 'allow-update-selected', '_dpatu' => wp_create_nonce( 'dpatu_theme_update' ), 'checked' => array( $stylesheet ) ) );
+			$enable_url = remove_query_arg( 'disabled', $enable_url );
 			$settings[] = sprintf( '<a href="%s">%s</a>', esc_url( $enable_url ), esc_html__( 'Allow Updates', 'disable-plugin-and-theme-updates' ) );
 		} else {
 			$disable_url = add_query_arg( array( 'action' => 'disallow-update-selected', '_dpatu' => wp_create_nonce( 'dpatu_theme_update' ), 'checked' => array( $stylesheet ) ) );
+			$disable_url = remove_query_arg( 'disabled', $disable_url );
 			$settings[] = sprintf( '<a href="%s">%s</a>', esc_url( $disable_url ), esc_html__( 'Disallow Updates', 'disable-plugin-and-theme-updates' ) );
 		}
 		return $settings;	
@@ -216,10 +289,34 @@ class Disable_Plugin_And_Theme_Updates {
 	public function bulk_actions_plugins() {
 		//Code stolen from wp-admin/plugins.php
 		
-		$wp_list_table = _get_list_table( 'WP_Plugins_List_Table' );
-		$action = $wp_list_table->current_action();
+		$action = $this->current_action();
 		if ( false === $action ) return;
 		
+		 
+	}
+	
+	private function current_action() {
+		if ( isset( $_REQUEST['action'] ) && -1 != $_REQUEST['action'] )
+			return $_REQUEST['action'];
+
+		if ( isset( $_REQUEST['action2'] ) && -1 != $_REQUEST['action2'] )
+			return $_REQUEST['action2'];
+
+		return false;
+	}
+	
+	public function bulk_actions_themes() {
+		//Code stolen from wp-admin/network/themes.php
+		
+		if ( !is_network_admin() ) return;
+		
+		$action = $this->current_action();
+		if ( false === $action ) return;
+		
+		$this->save_theme_update_options( $action );
+	}
+	
+	private function save_plugin_update_options( $action ) {
 		//Check capability
 		$capability = 'update_plugins'; //On single site, admins can use this, on multisite, only network admins can
 		if ( !current_user_can( $capability ) ) return;
@@ -253,19 +350,7 @@ class Disable_Plugin_And_Theme_Updates {
 		
 		//Update option
 		$plugin_options = array_values( array_unique( $plugin_options ) );
-		update_site_option( 'dpatu_plugins', $plugin_options ); 
-	}
-	
-	public function bulk_actions_themes() {
-		//Code stolen from wp-admin/network/themes.php
-		
-		if ( !is_network_admin() ) return;
-		
-		$wp_list_table = _get_list_table( 'WP_MS_Themes_List_Table' );
-		$action = $wp_list_table->current_action();
-		if ( false === $action ) return;
-		
-		$this->save_theme_update_options( $action );
+		update_site_option( 'dpatu_plugins', $plugin_options );	
 	}
 	
 	private function save_theme_update_options( $action ) {
