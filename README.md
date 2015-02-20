@@ -1,4 +1,6 @@
 # Disable-Plugin-and-Theme-Updates
 WordPress - Disable Plugin and Theme Updates
 
-Still in Development.  Do not use.
+Ready for testing.  Use at your own risk, although feedback is much appreciated.
+
+Docs coming soon.  Promise!
