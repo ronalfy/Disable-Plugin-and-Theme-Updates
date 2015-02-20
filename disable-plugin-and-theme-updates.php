@@ -50,6 +50,7 @@ class Disable_Plugin_And_Theme_Updates {
 		$action = $this->current_action();
 		if ( false === $action ) return;
 		
+		$this->save_plugin_update_options( $action );
 		 
 	}
 	
@@ -136,7 +137,7 @@ class Disable_Plugin_And_Theme_Updates {
 		
 		//Plugin Actions
 		add_action( 'load-plugins.php', array( $this, 'bulk_actions_plugins' ) );
-		add_filter( 'site_transient_update_plugins', array( $this, 'disable_plugin_notifications' ) );
+		add_filter( 'site_transient_update_plugins', array( $this, 'disable_plugin_notifications' ), 50 );
 		if ( is_multisite() ) {
 			add_filter( 'network_admin_plugin_action_links', array( $this, 'plugin_action_links' ), 11, 2 );
 		} else {
@@ -147,7 +148,7 @@ class Disable_Plugin_And_Theme_Updates {
 		
 		//Theme Actions
 		add_action( 'load-themes.php', array( $this, 'bulk_actions_themes' ) );
-		add_filter( 'site_transient_update_themes', array( $this, 'disable_theme_notifications' ) );
+		add_filter( 'site_transient_update_themes', array( $this, 'disable_theme_notifications' ), 50 );
 		add_filter( 'theme_action_links', array( $this, 'theme_action_links' ), 11, 2 ); //MS only
 		add_filter( 'dpatu_theme_action_links', array( $this, 'theme_action_links' ), 11, 2 ); //Single site only
 		add_action( 'admin_init', array( $this, 'maybe_save_theme_options' ) );
